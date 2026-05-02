@@ -1,74 +1,507 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mechanical Pro | حارث</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #238636; }
-        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        header { background: var(--card); padding: 15px; border-bottom: 1px solid #30363d; text-align: center; }
-        #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .msg { max-width: 85%; padding: 12px; border-radius: 10px; line-height: 1.6; }
-        .user { align-self: flex-end; background: var(--accent); }
-        .ai { align-self: flex-start; background: var(--card); border: 1px solid #30363d; }
-        .input-area { background: var(--card); padding: 15px; display: flex; gap: 10px; }
-        input { flex: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 10px; border-radius: 5px; }
-        button { background: var(--accent); color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
-    </style>
-</head>
-<body>
-<header><strong>MECHANICAL PRO 🛠️</strong> <br> <small onclick="setKey()" style="cursor:pointer; color:gray;">اضغط هنا لضبط المفتاح ⚙️</small></header>
-<div id="chat-box"></div>
-<div class="input-area">
-    <input type="file" id="img" accept="image/*" style="display:none" onchange="alert('تم اختيار الصورة')">
-    <button onclick="document.getElementById('img').click()">📷</button>
-    <input type="text" id="in" placeholder="اسأل مساعدك الهندسي...">
-    <button onclick="send()">إرسال</button>
-</div>
+import { useState, useEffect, useRef } from "react";
 
-<script>
-    let API_KEY = localStorage.getItem('gemini_key') || "";
-    function setKey() { const k = prompt("الصق المفتاح الجديد هنا:"); if(k) { localStorage.setItem('gemini_key', k); location.reload(); } }
+// ===================== DATA =====================
+const SUBJECTS = {
+  math: {
+    label: "الرياضيات الهندسية",
+    icon: "∑",
+    color: "#00d4ff",
+    topics: [
+      "التفاضل والتكامل",
+      "المعادلات التفاضلية",
+      "الجبر الخطي",
+      "الرياضيات المتقطعة",
+      "التحويلات لابلاس",
+      "الأعداد المركبة",
+    ],
+  },
+  mechanics: {
+    label: "ميكانيكا الأجسام الصلبة",
+    icon: "⚙",
+    color: "#ff6b35",
+    topics: [
+      "السكون (Statics)",
+      "الحركة (Dynamics)",
+      "قوانين نيوتن",
+      "العزوم والقوى",
+      "الاهتزازات الميكانيكية",
+      "ميكانيكا المرونة",
+    ],
+  },
+  thermo: {
+    label: "الديناميكا الحرارية",
+    icon: "🔥",
+    color: "#ffd700",
+    topics: [
+      "القوانين الأساسية للثرموديناميك",
+      "دورات الغاز",
+      "دورة كارنو",
+      "الإنتروبيا",
+      "الطاقة الحرة",
+      "أنظمة التبريد والتكييف",
+    ],
+  },
+  fluids: {
+    label: "ميكانيكا الموائع",
+    icon: "〜",
+    color: "#00ff88",
+    topics: [
+      "معادلة برنولي",
+      "الجريان المستقر",
+      "الجريان الاضطرابي",
+      "الضغط الهيدروستاتيكي",
+      "الاحتكاك في الأنابيب",
+      "المضخات والتوربينات",
+    ],
+  },
+  materials: {
+    label: "علم المواد",
+    icon: "⬡",
+    color: "#ff00aa",
+    topics: [
+      "البنية البلورية",
+      "خصائص الفولاذ والحديد",
+      "اختبارات الشد والضغط",
+      "الإجهاد والانفعال",
+      "المعالجة الحرارية",
+      "مواد البوليمر والسيراميك",
+    ],
+  },
+  manufacturing: {
+    label: "تقنيات التصنيع",
+    icon: "🔧",
+    color: "#aa44ff",
+    topics: [
+      "الخراطة والتفريز",
+      "اللحام والتقطيع",
+      "الصب والطرق",
+      "CNC والتصنيع الرقمي",
+      "مراقبة الجودة",
+      "طباعة ثلاثية الأبعاد",
+    ],
+  },
+};
 
-    async function send() {
-        const input = document.getElementById('in');
-        const fileInput = document.getElementById('img');
-        if(!API_KEY) return setKey();
-        if(!input.value && !fileInput.files[0]) return;
+const FORMULAS = [
+  { cat: "ميكانيكا", name: "قانون نيوتن الثاني", formula: "F = m · a", desc: "القوة = الكتلة × التسارع" },
+  { cat: "ميكانيكا", name: "طاقة حركية", formula: "KE = ½mv²", desc: "نصف الكتلة في مربع السرعة" },
+  { cat: "ميكانيكا", name: "طاقة وضع", formula: "PE = mgh", desc: "الكتلة × الجاذبية × الارتفاع" },
+  { cat: "ميكانيكا", name: "عزم الدوران", formula: "τ = r × F", desc: "العزم = نصف القطر × القوة" },
+  { cat: "مواد", name: "قانون هوك", formula: "σ = E · ε", desc: "الإجهاد = معامل يونغ × الانفعال" },
+  { cat: "مواد", name: "عامل السلامة", formula: "SF = σ_ult / σ_allow", desc: "نسبة الإجهاد المتاح إلى المسموح" },
+  { cat: "موائع", name: "معادلة برنولي", formula: "P + ½ρv² + ρgh = const", desc: "حفظ طاقة الموائع" },
+  { cat: "موائع", name: "معادلة الاستمرارية", formula: "A₁v₁ = A₂v₂", desc: "انتظام التدفق في الأنابيب" },
+  { cat: "حرارة", name: "القانون الأول للثرموديناميك", formula: "ΔU = Q - W", desc: "الطاقة الداخلية = حرارة - شغل" },
+  { cat: "حرارة", name: "كفاءة كارنو", formula: "η = 1 - T_L/T_H", desc: "الكفاءة المثلى لدورة كارنو" },
+  { cat: "رياضيات", name: "تحويل لابلاس", formula: "L{f(t)} = ∫₀^∞ e^(-st) f(t) dt", desc: "تحويل المجال الزمني للترددي" },
+  { cat: "رياضيات", name: "سلسلة تايلور", formula: "f(x) = Σ f⁽ⁿ⁾(a)/n! · (x-a)ⁿ", desc: "تقريب الدوال بالمتسلسلة" },
+];
 
-        const chat = document.getElementById('chat-box');
-        const userDiv = document.createElement('div');
-        userDiv.className = 'msg user';
-        userDiv.textContent = input.value || "تحليل صورة...";
-        chat.appendChild(userDiv);
+const UNITS = [
+  { from: "Pa", to: "psi", factor: 0.000145038, cat: "ضغط" },
+  { from: "psi", to: "Pa", factor: 6894.76, cat: "ضغط" },
+  { from: "bar", to: "Pa", factor: 100000, cat: "ضغط" },
+  { from: "°C", to: "°F", factor: null, formula: "x * 9/5 + 32", cat: "حرارة" },
+  { from: "°F", to: "°C", factor: null, formula: "(x - 32) * 5/9", cat: "حرارة" },
+  { from: "K", to: "°C", factor: null, formula: "x - 273.15", cat: "حرارة" },
+  { from: "N", to: "lbf", factor: 0.224809, cat: "قوة" },
+  { from: "lbf", to: "N", factor: 4.44822, cat: "قوة" },
+  { from: "kW", to: "hp", factor: 1.34102, cat: "قدرة" },
+  { from: "hp", to: "kW", factor: 0.7457, cat: "قدرة" },
+  { from: "m/s", to: "km/h", factor: 3.6, cat: "سرعة" },
+  { from: "RPM", to: "rad/s", factor: 0.10472, cat: "دوران" },
+];
 
-        const aiDiv = document.createElement('div');
-        aiDiv.className = 'msg ai';
-        aiDiv.textContent = "جاري التفكير...";
-        chat.appendChild(aiDiv);
+// ===================== COMPONENTS =====================
 
-        try {
-            let parts = [{ text: input.value || "اشرح هذه الصورة الهندسية" }];
-            if(fileInput.files[0]) {
-                const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(fileInput.files[0]); });
-                parts.push({ inlineData: { data: b64, mimeType: fileInput.files[0].type } });
-            }
+function Navbar({ active, setActive }) {
+  const tabs = [
+    { id: "home", icon: "⌂", label: "الرئيسية" },
+    { id: "subjects", icon: "📚", label: "المواد" },
+    { id: "formulas", icon: "∑", label: "المعادلات" },
+    { id: "calculator", icon: "⚡", label: "الحاسبة" },
+    { id: "converter", icon: "↔", label: "الوحدات" },
+    { id: "tasks", icon: "✓", label: "المهام" },
+    { id: "ai", icon: "🤖", label: "مساعد AI" },
+  ];
+  return (
+    <nav style={{
+      position: "fixed", bottom: 0, left: 0, right: 0,
+      background: "rgba(8,12,20,0.97)",
+      borderTop: "1px solid rgba(0,212,255,0.15)",
+      display: "flex", justifyContent: "space-around",
+      padding: "8px 0 10px", zIndex: 100,
+      backdropFilter: "blur(20px)",
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => setActive(t.id)} style={{
+          background: "none", border: "none", cursor: "pointer",
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+          color: active === t.id ? "#00d4ff" : "#556",
+          transition: "all 0.2s",
+          transform: active === t.id ? "translateY(-3px)" : "none",
+        }}>
+          <span style={{ fontSize: 18 }}>{t.icon}</span>
+          <span style={{ fontSize: 9, fontFamily: "Cairo, sans-serif" }}>{t.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
 
-            // ملاحظة: تم تعديل الموديل إلى الإصدار الأكثر استقراراً للمفاتيح المجانية
-            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ contents: [{ parts }] })
-            });
-            const data = await res.json();
-            aiDiv.innerHTML = marked.parse(data.candidates[0].content.parts[0].text);
-        } catch(e) {
-            aiDiv.textContent = "حدث خطأ. تأكد من أنك نسخت المفتاح كاملاً بدون مسافات.";
-        }
-        input.value = ""; fileInput.value = "";
-        chat.scrollTop = chat.scrollHeight;
+function HomePage() {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const tips = [
+    "ابدأ يومك بمراجعة ما تعلمته أمس — التكرار هو مفتاح الفهم العميق.",
+    "اعمل على المسائل يدوياً قبل استخدام البرمجيات — يبني الفهم الحقيقي.",
+    "ربط المعادلات بتطبيقاتها الواقعية يجعل الحفظ أسهل بكثير.",
+    "كل مهندس عظيم بدأ بنفس المعادلات التي تدرسها الآن.",
+    "الفشل في المسألة جزء من التعلم — أعد المحاولة بطريقة مختلفة.",
+  ];
+  const tip = tips[Math.floor(Date.now() / 86400000) % tips.length];
+
+  return (
+    <div style={{ padding: "0 0 80px" }}>
+      {/* Hero */}
+      <div style={{
+        background: "linear-gradient(135deg, #0a1628 0%, #0d2040 50%, #091525 100%)",
+        padding: "40px 20px 30px",
+        textAlign: "center",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          background: "radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.08) 0%, transparent 60%)",
+        }} />
+        <div style={{
+          fontFamily: "'Cairo', sans-serif",
+          fontSize: 11, letterSpacing: 3,
+          color: "#00d4ff", opacity: 0.7,
+          textTransform: "uppercase", marginBottom: 8,
+        }}>
+          {time.toLocaleDateString("ar-SA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </div>
+        <h1 style={{
+          fontFamily: "'Cairo', sans-serif",
+          fontSize: 26, fontWeight: 900,
+          background: "linear-gradient(135deg, #fff 0%, #00d4ff 100%)",
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          margin: "0 0 6px",
+        }}>
+          هندسة ميكانيكية
+        </h1>
+        <p style={{ color: "#88a", fontFamily: "Cairo, sans-serif", fontSize: 13, margin: 0 }}>
+          مرجعك الشامل للدراسة والتفوق
+        </p>
+        <div style={{
+          marginTop: 20,
+          display: "inline-block",
+          background: "rgba(0,212,255,0.07)",
+          border: "1px solid rgba(0,212,255,0.2)",
+          borderRadius: 12,
+          padding: "12px 20px",
+          maxWidth: 320,
+        }}>
+          <div style={{ fontSize: 10, color: "#00d4ff", fontFamily: "Cairo,sans-serif", marginBottom: 4 }}>💡 نصيحة اليوم</div>
+          <p style={{ color: "#ccd", fontSize: 12, fontFamily: "Cairo,sans-serif", margin: 0, lineHeight: 1.7 }}>{tip}</p>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div style={{ padding: "20px 16px 0", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        {[
+          { num: "6", label: "مواد أساسية", color: "#00d4ff" },
+          { num: "12+", label: "معادلة هندسية", color: "#ff6b35" },
+          { num: "∞", label: "مسائل للتدرب", color: "#ffd700" },
+        ].map(s => (
+          <div key={s.label} style={{
+            background: "rgba(255,255,255,0.03)",
+            border: `1px solid ${s.color}22`,
+            borderRadius: 12, padding: "14px 8px", textAlign: "center",
+          }}>
+            <div style={{ fontSize: 24, fontWeight: 900, color: s.color, fontFamily: "monospace" }}>{s.num}</div>
+            <div style={{ fontSize: 10, color: "#889", fontFamily: "Cairo,sans-serif", marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick Access */}
+      <div style={{ padding: "20px 16px 0" }}>
+        <h3 style={{ color: "#aab", fontFamily: "Cairo,sans-serif", fontSize: 13, margin: "0 0 12px" }}>⚡ وصول سريع</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {Object.entries(SUBJECTS).slice(0, 4).map(([k, s]) => (
+            <div key={k} style={{
+              background: `linear-gradient(135deg, ${s.color}11, ${s.color}05)`,
+              border: `1px solid ${s.color}30`,
+              borderRadius: 14, padding: "16px 14px",
+              cursor: "pointer",
+            }}>
+              <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
+              <div style={{ color: s.color, fontSize: 12, fontFamily: "Cairo,sans-serif", fontWeight: 700 }}>{s.label}</div>
+              <div style={{ color: "#667", fontSize: 10, fontFamily: "Cairo,sans-serif", marginTop: 4 }}>
+                {s.topics.length} موضوع
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubjectsPage() {
+  const [sel, setSel] = useState(null);
+  if (sel) {
+    const s = SUBJECTS[sel];
+    return (
+      <div style={{ padding: "24px 16px 80px" }}>
+        <button onClick={() => setSel(null)} style={{
+          background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.3)",
+          color: "#00d4ff", borderRadius: 8, padding: "6px 14px",
+          fontFamily: "Cairo,sans-serif", fontSize: 12, cursor: "pointer", marginBottom: 20,
+        }}>← رجوع</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: 14,
+            background: `${s.color}20`, border: `1px solid ${s.color}50`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 22,
+          }}>{s.icon}</div>
+          <h2 style={{ color: "#fff", fontFamily: "Cairo,sans-serif", fontSize: 20, margin: 0 }}>{s.label}</h2>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {s.topics.map((t, i) => (
+            <div key={i} style={{
+              background: "rgba(255,255,255,0.03)",
+              border: `1px solid ${s.color}20`,
+              borderLeft: `3px solid ${s.color}`,
+              borderRadius: 10, padding: "14px 16px",
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <span style={{
+                width: 24, height: 24, borderRadius: "50%",
+                background: `${s.color}20`, color: s.color,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>{i + 1}</span>
+              <span style={{ color: "#dde", fontFamily: "Cairo,sans-serif", fontSize: 14 }}>{t}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "24px 16px 80px" }}>
+      <h2 style={{ color: "#fff", fontFamily: "Cairo,sans-serif", fontSize: 20, margin: "0 0 20px" }}>
+        📚 المواد الدراسية
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {Object.entries(SUBJECTS).map(([k, s]) => (
+          <div key={k} onClick={() => setSel(k)} style={{
+            background: `linear-gradient(135deg, ${s.color}0a, rgba(8,12,20,0.8))`,
+            border: `1px solid ${s.color}25`,
+            borderRadius: 16, padding: "18px 16px",
+            cursor: "pointer", display: "flex", alignItems: "center", gap: 14,
+            transition: "all 0.2s",
+          }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: `${s.color}18`, border: `1px solid ${s.color}40`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, flexShrink: 0,
+            }}>{s.icon}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: s.color, fontFamily: "Cairo,sans-serif", fontSize: 15, fontWeight: 700 }}>{s.label}</div>
+              <div style={{ color: "#667", fontFamily: "Cairo,sans-serif", fontSize: 11, marginTop: 3 }}>
+                {s.topics.slice(0, 2).join(" · ")} ...
+              </div>
+            </div>
+            <span style={{ color: s.color, opacity: 0.5, fontSize: 18 }}>›</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FormulasPage() {
+  const [search, setSearch] = useState("");
+  const cats = [...new Set(FORMULAS.map(f => f.cat))];
+  const filtered = FORMULAS.filter(f =>
+    f.name.includes(search) || f.formula.includes(search) || f.cat.includes(search)
+  );
+
+  return (
+    <div style={{ padding: "24px 16px 80px" }}>
+      <h2 style={{ color: "#fff", fontFamily: "Cairo,sans-serif", fontSize: 20, margin: "0 0 16px" }}>∑ المعادلات الهندسية</h2>
+      <input
+        placeholder="🔍 ابحث عن معادلة..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{
+          width: "100%", background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(0,212,255,0.2)", borderRadius: 10,
+          padding: "10px 14px", color: "#fff",
+          fontFamily: "Cairo,sans-serif", fontSize: 13,
+          outline: "none", marginBottom: 20, boxSizing: "border-box",
+          direction: "rtl",
+        }}
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.map((f, i) => (
+          <div key={i} style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            borderRadius: 14, padding: "16px",
+            overflow: "hidden",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{
+                fontSize: 10, background: "rgba(0,212,255,0.1)",
+                color: "#00d4ff", borderRadius: 6, padding: "2px 8px",
+                fontFamily: "Cairo,sans-serif",
+              }}>{f.cat}</span>
+              <span style={{ color: "#ccd", fontFamily: "Cairo,sans-serif", fontSize: 13, fontWeight: 700 }}>{f.name}</span>
+            </div>
+            <div style={{
+              background: "rgba(0,0,0,0.3)", borderRadius: 8,
+              padding: "10px 14px", textAlign: "center",
+              fontFamily: "monospace", fontSize: 16,
+              color: "#ffd700", letterSpacing: 1, marginBottom: 8,
+            }}>{f.formula}</div>
+            <p style={{ color: "#889", fontFamily: "Cairo,sans-serif", fontSize: 11, margin: 0, textAlign: "right" }}>{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CalculatorPage() {
+  const [expr, setExpr] = useState("");
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [mode, setMode] = useState("basic");
+
+  const buttons = [
+    ["sin(", "cos(", "tan(", "π", "e"],
+    ["7", "8", "9", "÷", "C"],
+    ["4", "5", "6", "×", "⌫"],
+    ["1", "2", "3", "-", "√("],
+    ["0", ".", "^", "+", "="],
+  ];
+
+  const press = (v) => {
+    if (v === "C") { setExpr(""); setResult(null); return; }
+    if (v === "⌫") { setExpr(p => p.slice(0, -1)); return; }
+    if (v === "=") {
+      try {
+        const e = expr
+          .replace(/÷/g, "/").replace(/×/g, "*")
+          .replace(/π/g, Math.PI).replace(/e/g, Math.E)
+          .replace(/√\(/g, "Math.sqrt(")
+          .replace(/sin\(/g, "Math.sin(")
+          .replace(/cos\(/g, "Math.cos(")
+          .replace(/tan\(/g, "Math.tan(");
+        const r = Function('"use strict"; return (' + e + ')')();
+        const rounded = Math.round(r * 1e8) / 1e8;
+        setResult(rounded);
+        setHistory(h => [{ expr, result: rounded }, ...h.slice(0, 9)]);
+      } catch { setResult("خطأ"); }
+      return;
     }
-</script>
-</body>
-</html>
+    setResult(null);
+    setExpr(p => p + v);
+  };
+
+  return (
+    <div style={{ padding: "24px 16px 80px" }}>
+      <h2 style={{ color: "#fff", fontFamily: "Cairo,sans-serif", fontSize: 20, margin: "0 0 16px" }}>⚡ الحاسبة الهندسية</h2>
+
+      {/* Display */}
+      <div style={{
+        background: "rgba(0,0,0,0.5)", border: "1px solid rgba(0,212,255,0.2)",
+        borderRadius: 16, padding: "20px 16px", marginBottom: 16, minHeight: 80,
+        textAlign: "right",
+      }}>
+        <div style={{ color: "#556", fontFamily: "monospace", fontSize: 14, minHeight: 22, wordBreak: "break-all" }}>{expr || "0"}</div>
+        {result !== null && (
+          <div style={{ color: "#00d4ff", fontFamily: "monospace", fontSize: 28, fontWeight: 700, marginTop: 6 }}>
+            = {result}
+          </div>
+        )}
+      </div>
+
+      {/* Buttons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {buttons.map((row, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: `repeat(${row.length}, 1fr)`, gap: 8 }}>
+            {row.map(b => (
+              <button key={b} onClick={() => press(b)} style={{
+                background: b === "=" ? "linear-gradient(135deg,#00d4ff,#0088aa)"
+                  : ["C", "⌫"].includes(b) ? "rgba(255,80,80,0.15)"
+                  : ["sin(", "cos(", "tan(", "π", "e", "√(", "^"].includes(b) ? "rgba(255,215,0,0.1)"
+                  : "rgba(255,255,255,0.06)",
+                border: b === "=" ? "none" : "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 10, color: b === "=" ? "#000" : "#eef",
+                fontFamily: "monospace", fontSize: b.length > 2 ? 11 : 15,
+                fontWeight: 600, padding: "14px 4px",
+                cursor: "pointer", transition: "all 0.1s",
+              }}>{b}</button>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* History */}
+      {history.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h4 style={{ color: "#667", fontFamily: "Cairo,sans-serif", fontSize: 12, margin: "0 0 10px" }}>السجل</h4>
+          {history.slice(0, 5).map((h, i) => (
+            <div key={i} style={{
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              padding: "8px 0",
+              display: "flex", justifyContent: "space-between",
+              fontFamily: "monospace", fontSize: 12,
+            }}>
+              <span style={{ color: "#00d4ff" }}>{h.result}</span>
+              <span style={{ color: "#556" }}>{h.expr}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConverterPage() {
+  const [val, setVal] = useState("");
+  const [sel, setSel] = useState(0);
+  const cats = [...new Set(UNITS.map(u => u.cat))];
+  const [cat, setCat] = useState("ضغط");
+  const relevant = UNITS.filter(u => u.cat === cat);
+
+  const convert = (u, v) => {
+    const n = parseFloat(v);
+    if (isNaN(n)) return "—";
+    if (u.formula) {
+      try { return Math.round(Function('"use strict"; const x=' + n + ';return (' + u.formula + ')')() * 1e4) / 1e4; }
+      catch { return "خطأ"; }
+    }
+    return Math.round(n * u.factor * 1e6) / 1e6;
+  };
+
+  return (
+    <div style={{ padding: "24px 16px 80px" }}>
+      <h2 style={{ color: "#fff", fontFamily: "Cairo,sans-serif", fontSize: 20, margin: "0 0 16px" }}>↔ محوّل الوحدات</h2>
+
+      {/* Category tabs */}
+      <div style={{ display: "flex", gap: 8,
