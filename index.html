@@ -3,71 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MECHANICAL PRO | الحارث</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Mechanical Pro - مساعد حارث الهندسي</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body { background-color: #0d1117; color: white; font-family: sans-serif; }
-        .chat-area { height: 80vh; overflow-y: auto; padding: 15px; display: flex; flex-direction: column-reverse; gap: 10px; }
-        .msg { padding: 12px; border-radius: 12px; max-width: 85%; font-size: 14px; }
-        .user { background: #238636; align-self: flex-start; }
-        .ai { background: #161b22; border: 1px solid #30363d; align-self: flex-end; }
-        .input-box { position: fixed; bottom: 0; width: 100%; background: #161b22; padding: 10px; display: flex; gap: 8px; }
-        input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 10px; color: white; outline: none; }
+        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #238636; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--card); padding: 15px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .msg { max-width: 85%; padding: 12px; border-radius: 10px; line-height: 1.5; word-wrap: break-word; }
+        .user { align-self: flex-end; background: var(--accent); color: white; }
+        .ai { align-self: flex-start; background: var(--card); border: 1px solid #30363d; }
+        .ai img { max-width: 100%; border-radius: 5px; margin-top: 10px; }
+        .input-area { background: var(--card); padding: 20px; border-top: 1px solid #30363d; display: flex; gap: 10px; align-items: center; }
+        input[type="text"] { flex: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; border-radius: 5px; }
+        button { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .file-label { cursor: pointer; padding: 10px; background: #30363d; border-radius: 5px; display: flex; align-items: center; }
+        #preview { display: none; max-height: 100px; margin-top: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <header class="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
-        <h1 class="text-sm font-bold text-green-500">MECHANICAL AI v2.5</h1>
-        <button onclick="document.getElementById('keyBox').classList.toggle('hidden')" class="text-gray-400">⚙️ الإعدادات</button>
-    </header>
 
-    <div id="keyBox" class="hidden fixed inset-0 bg-black/90 z-50 p-6 flex items-center justify-center">
-        <div class="bg-[#161b22] p-6 rounded-xl w-full border border-gray-700 max-w-sm">
-            <p class="text-sm mb-4">أدخل مفتاح API (الذي استخرجته من جوجل):</p>
-            <input id="apiInput" type="password" class="w-full mb-4" placeholder="AIzaSy...">
-            <button onclick="saveKey()" class="w-full bg-green-600 p-2 rounded font-bold">حفظ وتفعيل</button>
-        </div>
-    </div>
+<header>
+    <strong>Mechanical Pro 🛠️</strong>
+    <button onclick="setApiKey()">⚙️ ضبط المفتاح</button>
+</header>
 
-    <div id="chat" class="chat-area">
-        <div class="ai msg">جاهز لمساعدتك يا مهندس حارث. اطلب حل أي مسألة.</div>
-    </div>
+<div id="chat-container"></div>
 
-    <div class="input-box">
-        <input id="userIn" type="text" placeholder="اكتب سؤالك هنا..." onkeypress="if(event.key==='Enter') send()">
-        <button onclick="send()" class="bg-green-600 px-4 py-2 rounded-lg font-bold">إرسال</button>
-    </div>
+<div id="image-preview-container" style="padding: 0 20px;">
+    <img id="preview" src="" alt="معاينة الصورة">
+</div>
 
-    <script>
-        let KEY = localStorage.getItem('h_key') || "";
-        function saveKey() {
-            const k = document.getElementById('apiInput').value;
-            if(k) { localStorage.setItem('h_key', k); KEY = k; alert("تم الحفظ!"); document.getElementById('keyBox').classList.add('hidden'); }
+<div class="input-area">
+    <label class="file-label">
+        📷
+        <input type="file" id="file-input" accept="image/*" style="display:none" onchange="previewImage(event)">
+    </label>
+    <input type="text" id="user-input" placeholder="اسأل عن ميكانيك الموائع، أو أرفق صورة لمسألة...">
+    <button onclick="sendMessage()">إرسال</button>
+</div>
+
+<script>
+    let API_KEY = localStorage.getItem('gemini_key') || "";
+
+    function setApiKey() {
+        const key = prompt("أدخل مفتاح Gemini API الخاص بك:", API_KEY);
+        if (key) {
+            API_KEY = key;
+            localStorage.setItem('gemini_key', key);
+        }
+    }
+
+    function previewImage(event) {
+        const preview = document.getElementById('preview');
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = e => { preview.src = e.target.result; preview.style.display = 'block'; };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    async function fileToGenerativePart(file) {
+        const base64EncodedDataPromise = new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(file);
+        });
+        return { inlineData: { data: await base64EncodedDataPromise, mimeType: file.type } };
+    }
+
+    async function sendMessage() {
+        if (!API_KEY) return alert("يرجى ضبط مفتاح API أولاً");
+        
+        const input = document.getElementById('user-input');
+        const fileInput = document.getElementById('file-input');
+        const container = document.getElementById('chat-container');
+        const preview = document.getElementById('preview');
+        
+        const text = input.value.trim();
+        const file = fileInput.files[0];
+        
+        if (!text && !file) return;
+
+        // إضافة رسالة المستخدم للواجهة
+        const userDiv = document.createElement('div');
+        userDiv.className = 'msg user';
+        userDiv.textContent = text || "تم إرسال صورة";
+        container.appendChild(userDiv);
+
+        const aiDiv = document.createElement('div');
+        aiDiv.className = 'msg ai';
+        aiDiv.textContent = "... جاري التفكير";
+        container.appendChild(aiDiv);
+
+        // تحضير البيانات لـ Google Gemini
+        try {
+            let payload = { contents: [{ parts: [{ text: text || "اشرح هذه الصورة" }] }] };
+            if (file) {
+                const imagePart = await fileToGenerativePart(file);
+                payload.contents[0].parts.push(imagePart);
+            }
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            const aiText = data.candidates[0].content.parts[0].text;
+            aiDiv.innerHTML = marked.parse(aiText);
+        } catch (e) {
+            aiDiv.textContent = "خطأ: تأكد من مفتاح API أو اتصال الإنترنت.";
         }
 
-        async function send() {
-            const i = document.getElementById('userIn');
-            const t = i.value.trim();
-            if(!t || !KEY) { if(!KEY) document.getElementById('keyBox').classList.remove('hidden'); return; }
-            add(t, 'user'); i.value = "";
-            try {
-                const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${KEY}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ contents: [{ parts: [{ text: "أنت مهندس ميكانيك خبير، حل بدقة: " + t }] }] })
-                });
-                const d = await r.json();
-                add(d.candidates[0].content.parts[0].text, 'ai');
-            } catch (e) { add("تأكد من المفتاح!", 'ai'); }
-        }
+        // تنظيف المدخلات
+        input.value = "";
+        fileInput.value = "";
+        preview.style.display = 'none';
+        container.scrollTop = container.scrollHeight;
+    }
+</script>
 
-        function add(text, type) {
-            const c = document.getElementById('chat');
-            const d = document.createElement('div');
-            d.className = `msg ${type}`;
-            d.innerText = text;
-            c.prepend(d);
-        }
-    </script>
 </body>
 </html>
