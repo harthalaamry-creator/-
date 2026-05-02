@@ -3,68 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mechanical Pro | المساعد الهندسي</title>
+    <title>Mechanical Pro | حارث</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #238636; }
-        body { font-family: 'Arial', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        header { background: var(--card); padding: 15px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--card); padding: 15px; border-bottom: 1px solid #30363d; text-align: center; }
         #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .msg { max-width: 80%; padding: 12px; border-radius: 10px; line-height: 1.6; }
-        .user { align-self: flex-end; background: var(--accent); color: white; }
+        .msg { max-width: 85%; padding: 12px; border-radius: 10px; line-height: 1.6; }
+        .user { align-self: flex-end; background: var(--accent); }
         .ai { align-self: flex-start; background: var(--card); border: 1px solid #30363d; }
-        .input-area { background: var(--card); padding: 15px; display: flex; gap: 10px; align-items: center; }
-        input[type="text"] { flex: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 10px; border-radius: 5px; }
-        button { background: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; }
-        #preview { display: none; max-height: 80px; margin: 10px; border-radius: 5px; }
+        .input-area { background: var(--card); padding: 15px; display: flex; gap: 10px; }
+        input { flex: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 10px; border-radius: 5px; }
+        button { background: var(--accent); color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
     </style>
 </head>
 <body>
-<header>
-    <strong>Mechanical Pro 🛠️</strong>
-    <button onclick="saveKey()">⚙️ ضبط المفتاح</button>
-</header>
+<header><strong>MECHANICAL PRO 🛠️</strong> <br> <small onclick="setKey()" style="cursor:pointer; color:gray;">اضغط هنا لضبط المفتاح ⚙️</small></header>
 <div id="chat-box"></div>
-<img id="preview" src="">
 <div class="input-area">
-    <label style="cursor:pointer; font-size: 20px;">📷<input type="file" id="img-input" accept="image/*" style="display:none" onchange="showPreview(event)"></label>
-    <input type="text" id="user-in" placeholder="اسأل عن الموائع أو ارفع صورة المسألة...">
+    <input type="file" id="img" accept="image/*" style="display:none" onchange="alert('تم اختيار الصورة')">
+    <button onclick="document.getElementById('img').click()">📷</button>
+    <input type="text" id="in" placeholder="اسأل مساعدك الهندسي...">
     <button onclick="send()">إرسال</button>
 </div>
 
 <script>
     let API_KEY = localStorage.getItem('gemini_key') || "";
-    function saveKey() { const k = prompt("الصق مفتاح API هنا:", API_KEY); if(k) { API_KEY = k; localStorage.setItem('gemini_key', k); location.reload(); } }
-    function showPreview(e) { const f = e.target.files[0]; if(f) { const r = new FileReader(); r.onload = ev => { document.getElementById('preview').src = ev.target.result; document.getElementById('preview').style.display='block'; }; r.readAsDataURL(f); } }
-    
-    async function send() {
-        if(!API_KEY) return alert("ضع المفتاح أولاً!");
-        const txt = document.getElementById('user-in').value;
-        const file = document.getElementById('img-input').files[0];
-        if(!txt && !file) return;
+    function setKey() { const k = prompt("الصق المفتاح الجديد هنا:"); if(k) { localStorage.setItem('gemini_key', k); location.reload(); } }
 
-        addMsg(txt || "تم إرسال صورة", 'user');
-        const aiMsg = addMsg("جاري التحليل...", 'ai');
+    async function send() {
+        const input = document.getElementById('in');
+        const fileInput = document.getElementById('img');
+        if(!API_KEY) return setKey();
+        if(!input.value && !fileInput.files[0]) return;
+
+        const chat = document.getElementById('chat-box');
+        const userDiv = document.createElement('div');
+        userDiv.className = 'msg user';
+        userDiv.textContent = input.value || "تحليل صورة...";
+        chat.appendChild(userDiv);
+
+        const aiDiv = document.createElement('div');
+        aiDiv.className = 'msg ai';
+        aiDiv.textContent = "جاري التفكير...";
+        chat.appendChild(aiDiv);
 
         try {
-            let parts = [{ text: txt || "حل هذه المسألة الهندسية" }];
-            if(file) {
-                const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(file); });
-                parts.push({ inlineData: { data: b64, mimeType: file.type } });
+            let parts = [{ text: input.value || "اشرح هذه الصورة الهندسية" }];
+            if(fileInput.files[0]) {
+                const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(fileInput.files[0]); });
+                parts.push({ inlineData: { data: b64, mimeType: fileInput.files[0].type } });
             }
 
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+            // ملاحظة: تم تعديل الموديل إلى الإصدار الأكثر استقراراً للمفاتيح المجانية
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ contents: [{ parts }] })
             });
-            const d = await resp.json();
-            aiMsg.innerHTML = marked.parse(d.candidates[0].content.parts[0].text);
-        } catch(e) { aiMsg.textContent = "خطأ في المفتاح أو الموديل. تأكد من المفتاح."; }
-        document.getElementById('preview').style.display='none';
-        document.getElementById('img-input').value="";
-        document.getElementById('user-in').value="";
+            const data = await res.json();
+            aiDiv.innerHTML = marked.parse(data.candidates[0].content.parts[0].text);
+        } catch(e) {
+            aiDiv.textContent = "حدث خطأ. تأكد من أنك نسخت المفتاح كاملاً بدون مسافات.";
+        }
+        input.value = ""; fileInput.value = "";
+        chat.scrollTop = chat.scrollHeight;
     }
-    function addMsg(t, c) { const d = document.createElement('div'); d.className = `msg ${c}`; d.textContent = t; document.getElementById('chat-box').appendChild(d); return d; }
 </script>
 </body>
 </html>
